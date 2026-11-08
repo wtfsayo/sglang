@@ -393,15 +393,15 @@ class SchedulerDllmMixin:
             ):
                 running_batch.batch_is_full = True
 
-            # Try preemption if batch is full
-            if running_batch.batch_is_full:
-                if not self.enable_priority_preemption or not adder.preempt_to_schedule(
-                    req
-                ):
-                    break
-
-            # Prepare and add request
+            # Preemption prices the request's current prefix match.
             req.init_next_round_input(self.tree_cache)
+            if running_batch.batch_is_full and (
+                not self.enable_priority_preemption
+                or not adder.preempt_to_schedule(req)
+            ):
+                self._drop_unadmitted_match(req)
+                break
+
             res = adder.add_one_req(
                 req,
                 has_chunked_req=True,
@@ -411,6 +411,8 @@ class SchedulerDllmMixin:
             if res != AddReqResult.CONTINUE:
                 if res == AddReqResult.NO_TOKEN:
                     running_batch.batch_is_full = True
+                if not (adder.can_run_list and req is adder.can_run_list[-1]):
+                    self._drop_unadmitted_match(req)
                 break
 
         return res
